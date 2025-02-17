@@ -5,6 +5,8 @@ from pydub.playback import play
 import tempfile
 import re
 import argparse
+from datetime import datetime
+import os
 
 def split_text_by_punctuation(text, max_length):
     sentences = re.split(r'(?<=[.,!?;])\s+', text)
@@ -27,7 +29,7 @@ def split_text_by_punctuation(text, max_length):
     
     return chunks
 
-def text_to_speech(language, text, voice_speed="neutral"):
+def text_to_speech(language, text, voice_speed="neutral", export=False):
     MAX_LENGTH = 200
     
     chunks = split_text_by_punctuation(text, MAX_LENGTH)
@@ -73,6 +75,16 @@ def text_to_speech(language, text, voice_speed="neutral"):
             temp_combined_path = temp_combined.name
         
         play(combined_audio)
+        
+        if export:
+            output_folder = "output"
+            os.makedirs(output_folder, exist_ok=True)
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{output_folder}/{language}_{voice_speed}_{timestamp}.mp3"
+            
+            combined_audio.export(filename, format="mp3")
+            print(f"Audio exported to: {filename}")
 
 def main():
     parser = argparse.ArgumentParser(description='Convert text to speech')
@@ -81,9 +93,11 @@ def main():
     parser.add_argument('--voice_speed', type=str, default="neutral", 
                         choices=["neutral", "slow", "fast"], 
                         help='Voice speed (neutral, slow, fast)')
+    parser.add_argument('--export', action='store_true', 
+                        help='Export the audio to an MP3 file in output folder')
     
     args = parser.parse_args()
-    text_to_speech(args.language, args.text, args.voice_speed)
+    text_to_speech(args.language, args.text, args.voice_speed, args.export)
 
 if __name__ == "__main__":
     main()
