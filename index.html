@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Google TTS</title>
+    <style>
+      body {
+        font-family: "Segoe UI", system-ui, sans-serif;
+        min-height: 100vh;
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background-color: #f5f5f7;
+        color: #1d1d1f;
+      }
+      .container {
+        width: 100%;
+        max-width: 800px;
+        display: flex;
+        flex-direction: column;
+        gap: 30px;
+        background: white;
+        padding: 40px;
+        border-radius: 16px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        margin: 20px;
+      }
+      h1 {
+        color: #1a73e8;
+        margin: 0;
+        font-size: 2.2rem;
+        font-weight: 600;
+        text-align: center;
+      }
+      textarea {
+        min-height: 200px;
+        padding: 20px;
+        font-size: 16px;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        resize: vertical;
+        transition: border-color 0.2s;
+      }
+      .controls {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        align-items: center;
+      }
+      .controls-group {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .button-group {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        grid-column: 1 / -1;
+      }
+      button {
+        padding: 14px 28px;
+        font-size: 16px;
+        min-width: 120px;
+        cursor: pointer;
+        border: none;
+        border-radius: 8px;
+        background-color: #1a73e8;
+        color: white;
+        font-weight: 500;
+        transition: all 0.2s;
+      }
+      .speed-control {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        background: #f8f9fa;
+        padding: 16px;
+        border-radius: 12px;
+      }
+      .speed-control-inner {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      #language-select {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        background: white;
+        font-size: 14px;
+        transition: border-color 0.2s;
+      }
+      @media (max-width: 768px) {
+        .container {
+          padding: 25px;
+        }
+        .controls {
+          grid-template-columns: 1fr;
+        }
+        .button-group {
+          flex-direction: column;
+        }
+        button {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Google Text to Speech</h1>
+      <textarea id="text-input" placeholder="Enter your text here..."></textarea>
+      <div class="controls">
+        <div class="controls-group">
+          <select id="language-select"></select>
+        </div>
+        <div class="controls-group">
+          <div class="speed-control">
+            <label for="speed">Playback Speed:</label>
+            <div class="speed-control-inner">
+              <input type="range" id="speed" min="0.5" max="2" step="0.1" value="1" />
+              <span id="speed-value">1.0</span>
+            </div>
+          </div>
+        </div>
+        <div class="button-group">
+          <button id="play-btn">Play</button>
+          <button id="stop-btn">Stop</button>
+          <button id="download-btn">Download</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const API_KEY = "AIzaSyDLEeFI5OtFBwYBIoK_jj5m32rZK5CkCXA";
+      const MAX_LENGTH = 200;
+      let currentAudioChunks = [];
+      let currentChunkIndex = 0;
+
+      const textInput = document.getElementById("text-input");
+      const languageSelect = document.getElementById("language-select");
+      const speedControl = document.getElementById("speed");
+      const speedValue = document.getElementById("speed-value");
+      const playBtn = document.getElementById("play-btn");
+      const stopBtn = document.getElementById("stop-btn");
+      const audioPlayer = document.getElementById("audio-player");
+      const downloadBtn = document.getElementById("download-btn");
+      let isPlaying = false;
+      let currentAudioContext = null; // Add this to track the current audio context
+      let currentSource = null; // Add this to track the current audio source
+
+      async function loadLanguages() {
+        try {
+          const response = await fetch("languages.json");
+          const languages = await response.json();
+          const select = document.getElementById("language-select");
+
+          languages.text.forEach((lang) => {
+            const option = document.createElement("option");
+            option.value = lang.code;
+            option.textContent = `${lang.language} (${lang.code})`;
+            option.defaultSelected = lang.code === "vi";
+            select.appendChild(option);
+          });
+        } catch (error) {
+          console.error("Error loading languages:", error);
+        }
+      }
+
+      // Call the function to load languages when the page loads
+      document.addEventListener("DOMContentLoaded", loadLanguages);
+
+      function splitTextByPunctuation(text) {
+        const sentences = text.split(/(?<=[.,!?;])\s+/g);
+        const chunks = [];
+        let currentChunk = "";
+
+        sentences.forEach((sentence) => {
+          if (currentChunk.length + sentence.length + 1 > MAX_LENGTH) {
+            chunks.push(currentChunk);
+            currentChunk = sentence;
+          } else {
+            currentChunk += (currentChunk ? " " : "") + sentence;
+          }
+        });
+
+        if (currentChunk) {
+          chunks.push(currentChunk);
+        }
+
+        return chunks;
+      }
+
+      async function textToSpeech(language, text, speed) {
+        if (isPlaying) return;
+
+        const chunks = splitTextByPunctuation(text);
+        currentAudioChunks = [];
+        currentChunkIndex = 0;
+
+        for (const chunk of chunks) {
+          const url = "https://translate-pa.googleapis.com/v1/textToSpeech";
+          const params = new URLSearchParams({
+            client: "gtx",
+            language: language,
+            text: chunk,
+            voice_speed: 1, // Keep this at 1 and handle speed in JS
+            key: API_KEY,
+          });
+
+          try {
+            const response = await fetch(`${url}?${params}`);
+            if (response.ok) {
+              const data = await response.json();
+              const audioContent = data.audioContent;
+              currentAudioChunks.push(audioContent);
+            } else {
+              console.error("Error:", response.status, response.statusText);
+            }
+          } catch (error) {
+            console.error("Error:", error);
+          }
+        }
+
+        if (currentAudioChunks.length > 0) {
+          playNextChunk(speed);
+        }
+      }
+
+      function playNextChunk(speed) {
+        if (currentChunkIndex < currentAudioChunks.length) {
+          const audioSrc = `data:audio/mp3;base64,${currentAudioChunks[currentChunkIndex]}`;
+          isPlaying = true;
+
+          // Create new audio context
+          currentAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+          currentSource = currentAudioContext.createBufferSource();
+
+          // Decode audio data
+          fetch(audioSrc)
+            .then((response) => response.arrayBuffer())
+            .then((arrayBuffer) => currentAudioContext.decodeAudioData(arrayBuffer))
+            .then((audioBuffer) => {
+              currentSource.buffer = audioBuffer;
+              currentSource.playbackRate.value = speed;
+              currentSource.connect(currentAudioContext.destination);
+              currentSource.start(0);
+
+              currentSource.onended = () => {
+                currentChunkIndex++;
+                if (currentChunkIndex < currentAudioChunks.length) {
+                  playNextChunk(speed);
+                } else {
+                  isPlaying = false;
+                  playBtn.textContent = "Play";
+                  currentAudioContext = null; // Clean up
+                  currentSource = null; // Clean up
+                }
+              };
+            })
+            .catch((error) => console.error("Error decoding audio:", error));
+        }
+      }
+
+      playBtn.addEventListener("click", () => {
+        if (isPlaying) return;
+        const text = textInput.value;
+        if (text.trim() === "") return;
+
+        const language = languageSelect.value;
+        const speed = parseFloat(speedControl.value);
+
+        playBtn.textContent = "Playing...";
+        textToSpeech(language, text, speed);
+      });
+
+      stopBtn.addEventListener("click", () => {
+        isPlaying = false;
+        currentChunkIndex = currentAudioChunks.length; // Stop playing next chunks
+
+        // Add these lines to stop the currently playing audio
+        if (currentSource) {
+          currentSource.stop();
+        }
+        if (currentAudioContext) {
+          currentAudioContext.close();
+        }
+
+        playBtn.textContent = "Play";
+        currentAudioContext = null; // Clean up
+        currentSource = null; // Clean up
+      });
+
+      downloadBtn.addEventListener("click", () => {
+        if (currentAudioChunks.length === 0) return;
+
+        const combinedAudio = currentAudioChunks.join("");
+        const link = document.createElement("a");
+        link.href = `data:audio/mp3;base64,${combinedAudio}`;
+        link.download = "speech.mp3";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      });
+
+      speedControl.addEventListener("input", () => {
+        speedValue.textContent = speedControl.value;
+      });
+    </script>
+  </body>
+</html>
