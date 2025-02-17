@@ -27,7 +27,7 @@ def split_text_by_punctuation(text, max_length):
     
     return chunks
 
-def text_to_speech(language, text, voice_gender="neutral"):
+def text_to_speech(language, text, voice_speed="neutral"):
     MAX_LENGTH = 200
     
     chunks = split_text_by_punctuation(text, MAX_LENGTH)
@@ -55,9 +55,9 @@ def text_to_speech(language, text, voice_gender="neutral"):
             
             audio_segment = AudioSegment.from_file(temp_audio_path)
             
-            if voice_gender == "slow":
+            if voice_speed == "slow":
                 audio_segment = audio_segment._spawn(audio_segment.raw_data, overrides={'frame_rate': int(audio_segment.frame_rate * 0.8)})
-            elif voice_gender == "fast":
+            elif voice_speed == "fast":
                 audio_segment = audio_segment._spawn(audio_segment.raw_data, overrides={'frame_rate': int(audio_segment.frame_rate * 1.3)})
             
             audio_segments.append(audio_segment)
@@ -78,12 +78,12 @@ def main():
     parser = argparse.ArgumentParser(description='Convert text to speech')
     parser.add_argument('language', type=str, help='Language code (e.g., "vi", "fr")')
     parser.add_argument('text', type=str, help='Text to convert to speech')
-    parser.add_argument('--voice_gender', type=str, default="neutral", 
+    parser.add_argument('--voice_speed', type=str, default="neutral", 
                         choices=["neutral", "slow", "fast"], 
-                        help='Voice speed/gender (neutral, slow, fast)')
+                        help='Voice speed (neutral, slow, fast)')
     
     args = parser.parse_args()
-    text_to_speech(args.language, args.text, args.voice_gender)
+    text_to_speech(args.language, args.text, args.voice_speed)
 
 if __name__ == "__main__":
     main()
